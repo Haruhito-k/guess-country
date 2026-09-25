@@ -1,0 +1,14 @@
+# Gitにテキストファイルの改行を自動判定させる
+* text=auto
+
+# HTML / CSS / JavaScript
+*.html text
+*.css text
+*.js text
+
+# 画像などのバイナリファイル
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
