@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<style>
+body { background: #000; color: #fff; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: sans-serif; }
+#diff-selector { display: flex; gap: 10px; margin-bottom: 10px; }
+.diff-btn { font-size: 16px; padding: 8px 16px; background: #333; border: 2px solid #666; color: #fff; cursor: pointer; border-radius: 5px; font-weight: bold; }
+.diff-btn.active { background: #f80; color: #000; border-color: #f80; }
+#waku { position: relative; width: 800px; height: 500px; border: 4px solid #f80; overflow: hidden; background: #222; }
+#map { position: absolute; width: 3000px; will-change: transform; left: 50%; top: 50%; display: none; }
+#target-name { font-size: 28px; color: #f80; font-weight: bold; height: 40px; }
+#setup-area { position: absolute; z-index: 100; background: rgba(0,0,0,0.9); width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.input-area { display: flex; align-items: center; gap: 10px; margin-top: 15px; }
+input[type="text"] { font-size: 30px; padding: 10px; text-align: center; border: 2px solid #f80; background: #000; color: #fff; width: 350px; }
+button.skip-btn { font-size: 20px; padding: 14px 20px; background: #555; border: 2px solid #888; color: #fff; font-weight: bold; cursor: pointer; border-radius: 5px; }
+button.skip-btn:hover { background: #777; }
+input[type="file"] { font-size: 18px; padding: 12px 24px; background: #f80; border: none; color: #000; font-weight: bold; cursor: pointer; border-radius: 5px; }
+</style>
+</head>
+<body>
+
+<div id="diff-selector">
+  <button class="diff-btn active" onclick="setDifficulty('all', this)">すべて</button>
+  <button class="diff-btn" onclick="setDifficulty('easy', this)">かんたん</button>
+  <button class="diff-btn" onclick="setDifficulty('normal', this)">ふつう</button>
+  <button class="diff-btn" onclick="setDifficulty('hard', this)">むずかしい</button>
+</div>
+
+<div id="target-name">画像を選択してください</div>
+
+<div id="waku">
+  <div id="setup-area">
+    <p style="font-size: 18px; margin-bottom: 20px;">apploaded フォルダ内の画像を選択（Ctrl+Aで全選択）</p>
+    <input type="file" id="file-input" multiple accept="image/*">
+  </div>
+  <img id="map" src="">
+</div>
+
+<div class="input-area">
+  <input type="text" id="box" placeholder="国名を入力" disabled>
+  <button class="skip-btn" id="skip-btn" onclick="skipQuestion()" disabled>パス (Enter)</button>
+</div>
+
+<script>
+var m = document.getElementById('map');
+var b = document.getElementById('box');
+var skipBtn = document.getElementById('skip-btn');
+var tText = document.getElementById('target-name');
+var setupArea = document.getElementById('setup-area');
+var fileInput = document.getElementById('file-input');
+
+var s = 0.8;
+var current;
+var timer;
+var fileMap = {};
+var currentDiff = 'all';
+
+function cleanName(name) {
+  return name.toLowerCase()
+             .replace(/_map|\-map|\.png|\.jpg|\.jpeg/g, "")
+             .replace(/[^a-z0-9]/g, "");
+}
+
+var masterCountries = [
+  // --- かんたん (誰もが知る超有名大国：10か国) ---
+  { name: "日本", file: "japan", x: 86.7, y: 31, diff: "easy" },// 確認済み
+  { name: "アメリカ", file: "unitedstates", x: 17, y: 30, diff: "easy" },// 確認済み
+  { name: "中国", file: "china", x: 76, y: 35, diff: "easy" },// 確認済み
+  { name: "イギリス", file: "unitedkingdom", x: 44, y: 19, diff: "easy" },// 確認済み
+  { name: "フランス", file: "france", x: 46, y: 24, diff: "easy" },// 確認済み
+  { name: "オーストラリア", file: "australia", x: 80, y: 79, diff: "easy" },// 確認済み
+  { name: "ブラジル", file: "brazil", x: 29, y: 64, diff: "easy" },// 確認済み
+  { name: "インド", file: "india", x: 70, y: 45, diff: "easy" },// 確認済み
+  { name: "ロシア", file: "russia", x: 68, y: 13, diff: "easy" },// 確認済み
+  { name: "イタリア", file: "italy", x: 49, y: 27, diff: "easy" },// 確認済み
+
+  // --- ふつう (形や場所がわかりやすいメジャー国：20か国) ---
+  { name: "ドイツ", file: "germany", x: 48, y: 21, diff: "normal" },// 確認済み
+  { name: "カナダ", file: "canada", x: 12, y: 18, diff: "normal" },// 確認済み
+  { name: "韓国", file: "southkorea", x: 77.6, y: 32.4, diff: "normal" },// 確認済み
+  { name: "エジプト", file: "egypt", x: 54.3, y: 39, diff: "normal" },// 確認済み
+  { name: "スペイン", file: "spain", x: 44, y: 29, diff: "normal" },// 確認済み
+  { name: "アイスランド", file: "iceland", x: 40, y: 12, diff: "normal" },// 確認済み
+  { name: "アルゼンチン", file: "argentina", x: 26, y: 83, diff: "normal" },// 確認済み
+  { name: "インドネシア", file: "indonesia", x: 83, y: 62, diff: "normal" },// 確認済み
+  { name: "オランダ", file: "netherlands", x: 40, y: 19, diff: "normal" },// 確認済み
+  { name: "スイス", file: "switzerland", x: 47, y: 24, diff: "normal" },// 確認済み
+  { name: "スウェーデン", file: "sweden", x: 49, y: 14, diff: "normal" },// 確認済み
+  { name: "タイ", file: "thailand", x: 77.5, y: 48, diff: "normal" },// 確認済み
+  { name: "トルコ", file: "turkey", x: 55, y: 30, diff: "normal" },// 確認済み
+  { name: "ノルウェー", file: "norway", x: 48.8, y: 11.7, diff: "normal" },// 確認済み
+  { name: "フィリピン", file: "philippines", x: 84, y: 49, diff: "normal" },// 確認済み
+  { name: "フィンランド", file: "finland", x: 51.3, y: 11, diff: "normal" },// 確認済み
+  { name: "メキシコ", file: "mexico", x: 13, y: 41, diff: "normal" },// 確認済み
+  { name: "モンゴル", file: "mongolia", x: 75, y: 25, diff: "normal" },// 確認済み
+  { name: "ベトナム", file: "vietnam", x: 79.3, y: 46, diff: "normal" },// 確認済み
+  { name: "ニュージーランド", file: "newzealand", x: 96, y: 89, diff: "normal" },// 確認済み
+
+  // --- むずかしい (場所が狭い・形状の判別が難しい・マニアックな国：50か国) ---
+  { name: "アゼルバイジャン", file: "azerbaijan", x: 59, y: 29, diff: "hard" },// 確認済み
+  { name: "アフガニスタン", file: "afghanistan", x: 65.5, y: 33.5, diff: "hard" },// 確認済み
+  { name: "アラブ首長国連邦", file: "unitedarabemirates", x: 62, y: 41, diff: "hard" },// 確認済み
+  { name: "アルジェリア", file: "algeria", x: 46, y: 38, diff: "hard" },// 確認済み
+  { name: "アルバニア", file: "albania", x: 51, y: 27, diff: "hard" },// 確認済み
+  { name: "アルメニア", file: "armenia", x: 58, y: 28, diff: "hard" },// 確認済み
+  { name: "アンゴラ", file: "angola", x: 50, y: 67, diff: "hard" },// 確認済み
+  { name: "イエメン", file: "yemen", x: 60, y: 48, diff: "hard" },// 確認済み
+  { name: "イラク", file: "iraq", x: 58.5, y: 34.2, diff: "hard" },// 確認済み
+  { name: "イラン", file: "iran", x: 62, y: 35, diff: "hard" },// 確認済み
+  { name: "アイルランド", file: "ireland", x: 43, y: 20, diff: "hard" },// 確認済み
+  { name: "ウクライナ", file: "ukraine", x: 54, y: 23, diff: "hard" },// 確認済み
+  { name: "ウガンダ", file: "uganda", x: 55.5, y: 56.7, diff: "hard" },// 確認済み
+  { name: "ウズベキスタン", file: "uzbekistan", x: 58, y: 28, diff: "hard" },// 確認済み
+  { name: "ウルグアイ", file: "uruguay", x: 22, y: 82, diff: "hard" },// 確認済み
+  { name: "エクアドル", file: "ecuador", x: 19.7, y: 58.7, diff: "hard" },// 確認済み
+  { name: "エストニア", file: "estonia", x: 51.5, y: 15.5, diff: "hard" },// 確認済み
+  { name: "エチオピア", file: "ethiopia", x: 58, y: 52, diff: "hard" },// 確認済み
+  { name: "エルサルバドル", file: "elsalvador", x: 16.7, y: 48, diff: "hard" },// 確認済み
+  { name: "オーストリア", file: "austria", x: 49, y: 22.3, diff: "hard" },// 確認済み
+  { name: "カザフスタン", file: "kazakhstan", x: 58, y: 24, diff: "hard" },// 確認済み
+  { name: "カンボジア", file: "cambodia", x: 79, y: 49, diff: "hard" },// 確認済み
+  { name: "キューバ", file: "cuba", x: 20.5, y: 43.3, diff: "hard" },// 確認済み
+  { name: "ギリシャ", file: "greece", x: 51.9, y: 29, diff: "hard" },// 確認済み
+  { name: "ケニア", file: "kenya", x: 57, y: 58, diff: "hard" },// 確認済み
+　{ name: "コートジボワール", file: "cote_divoire", x:43, y: 54, diff: "hard" },// 確認済み
+  { name: "コスタリカ", file: "costarica", x: 18, y: 51, diff: "hard" },// 確認済み
+  { name: "コロンビア", file: "colombia", x: 22, y: 54.5, diff: "hard" },// 確認済み
+  { name: "サウジアラビア", file: "saudiarabia", x: 59, y: 40, diff: "hard" },// 確認済み
+  { name: "スーダン", file: "sudan", x: 54.5, y: 47, diff: "hard" },// 確認済み
+  { name: "スリランカ", file: "srilanka", x: 71, y: 52, diff: "hard" },// 確認済み
+  { name: "チェコ", file: "czechrepublic", x: 49.3, y: 22.2, diff: "hard" },// 確認済み
+  { name: "チリ", file: "chile", x: 23, y: 83, diff: "hard" },// 確認済み
+  { name: "デンマーク", file: "denmark", x: 47.5, y: 16, diff: "hard" },// 確認済み
+  { name: "ナイジェリア", file: "nigeria", x: 47, y: 52, diff: "hard" },// 確認済み
+  { name: "ネパール", file: "nepal", x: 71, y: 38, diff: "hard" },// 確認済み
+  { name: "パキスタン", file: "pakistan", x: 66, y: 37, diff: "hard" },// 確認済み
+  { name: "パラグアイ", file: "paraguay", x: 26.5, y: 75.5, diff: "hard" },// 確認済み
+  { name: "バングラデシュ", file: "bangladesh", x: 73, y: 41, diff: "hard" },// 確認済み
+  { name: "ベネズエラ", file: "venezuela", x: 24, y: 52, diff: "hard" },// 確認済み
+  { name: "ペルー", file: "peru", x: 21, y: 64.5, diff: "hard" },// 確認済み
+  { name: "ベルギー", file: "belgium", x: 46, y: 21, diff: "hard" },// 確認済み
+  { name: "ポーランド", file: "poland", x: 50.5, y: 19, diff: "hard" },// 確認済み
+  { name: "ポルトガル", file: "portugal", x: 42, y: 29, diff: "hard" },// 確認済み
+  { name: "マダガスカル", file: "madagascar", x: 59, y: 72, diff: "hard" },// 確認済み
+  { name: "マレーシア", file: "malaysia", x: 78, y: 56, diff: "hard" },// 確認済み
+  { name: "南アフリカ共和国", file: "southafrica", x: 53, y: 78.7, diff: "hard" },// 確認済み
+  { name: "ミャンマー", file: "myanmar", x: 76, y: 45, diff: "hard" },// 確認済み
+  { name: "モロッコ", file: "morocco", x: 43.5, y: 36, diff: "hard" },// 確認済み
+  { name: "ヨルダン", file: "jordan", x: 56.3, y: 35.5, diff: "hard" },// 確認済み
+  { name: "ルーマニア", file: "romania", x: 52.7, y: 25.2, diff: "hard" }// 確認済み
+];
+
+var activeCountries = [];
+
+fileInput.onchange = function(e) {
+  var files = e.target.files;
+  for (var i = 0; i < files.length; i++) {
+    var key = cleanName(files[i].name);
+    fileMap[key] = files[i];
+  }
+
+  setupArea.style.display = 'none';
+  m.style.display = 'block';
+  b.disabled = false;
+  skipBtn.disabled = false;
+  
+  filterCountries();
+
+  setTimeout(function() {
+    b.focus();
+    nextQuestion();
+  }, 100);
+};
+
+function setDifficulty(diff, btn) {
+  currentDiff = diff;
+  var btns = document.querySelectorAll('.diff-btn');
+  btns.forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+
+  if (Object.keys(fileMap).length > 0) {
+    filterCountries();
+    nextQuestion();
+  }
+}
+
+function filterCountries() {
+  activeCountries = masterCountries.filter(function(c) {
+    var hasFile = fileMap[cleanName(c.file)] !== undefined;
+    if (!hasFile) return false;
+    if (currentDiff === 'all') return true;
+    return c.diff === currentDiff;
+  });
+
+  if (activeCountries.length === 0) {
+    alert("該当する難易度の画像が見つかりませんでした。「すべて」に戻します。");
+    currentDiff = 'all';
+    filterCountries();
+  }
+}
+
+function skipQuestion() {
+  if (!current) return;
+  alert("スキップしました！正解は「" + current.name + "」");
+  nextQuestion();
+}
+
+var lastUrl = null;
+
+function nextQuestion() {
+  if (timer) clearInterval(timer);
+  if (activeCountries.length === 0) return;
+
+  if (lastUrl) {
+    URL.revokeObjectURL(lastUrl);
+  }
+
+  current = activeCountries[Math.floor(Math.random() * activeCountries.length)];
+  
+  var file = fileMap[cleanName(current.file)];
+  lastUrl = URL.createObjectURL(file);
+  
+  m.src = lastUrl;
+  s = 0.8;
+  b.value = "";
+  tText.innerText = "ターゲットを破壊せよ！！";
+  update();
+
+  timer = setInterval(function() {
+    s = s + 0.012;
+    update();
+    if (s > 7) {
+      alert("時間切れ！正解は「" + current.name + "」");
+      nextQuestion();
+    }
+  }, 20);
+}
+
+function update() {
+  if (!current) return;
+  m.style.transformOrigin = current.x + "% " + current.y + "%";
+  m.style.transform = "translate(-" + current.x + "%, -" + current.y + "%) scale(" + s + ")";
+}
+
+b.onkeypress = function(e) {
+  if (e.keyCode === 13) {
+    if (b.value.trim() === "") {
+      skipQuestion();
+      return;
+    }
+
+    if (b.value === current.name) {
+      alert("成功！");
+      nextQuestion();
+    } else {
+      b.value = "";
+    }
+  }
+};
+</script>
+
+</body>
+</html>
