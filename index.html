@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -105,7 +104,6 @@ button.skip-btn:hover {
     background: #777;
 }
 
-/* 画像読み込み中 */
 #loading {
     position: absolute;
     inset: 0;
@@ -121,15 +119,17 @@ button.skip-btn:hover {
     font-size: 22px;
     color: #f80;
     font-weight: bold;
+    text-align: center;
 }
 
 #loading-detail {
     margin-top: 10px;
     font-size: 15px;
     color: #aaa;
+    text-align: center;
+    max-width: 90%;
 }
 
-/* エラー表示 */
 #error-message {
     display: none;
     color: #f55;
@@ -139,8 +139,8 @@ button.skip-btn:hover {
     margin: 20px;
 }
 
-/* スマホ対応 */
 @media (max-width: 850px) {
+
     #waku {
         width: 90vw;
         height: 56.25vw;
@@ -178,20 +178,21 @@ button.skip-btn:hover {
 
 <div id="waku">
 
-```
-<div id="loading">
-    <div id="loading-text">画像を読み込んでいます...</div>
-    <div id="loading-detail">GitHubから画像を読み込んでいます</div>
-</div>
+    <div id="loading">
+        <div id="loading-text">GitHubから画像を読み込んでいます...</div>
+        <div id="loading-detail">
+            少し待ってください
+        </div>
+    </div>
 
-<div id="error-message"></div>
+    <div id="error-message"></div>
 
-<img id="map" src="" alt="国の画像">
-```
+    <img id="map" src="" alt="国の画像">
 
 </div>
 
 <div class="input-area">
+
     <input
         type="text"
         id="box"
@@ -200,18 +201,17 @@ button.skip-btn:hover {
         autocomplete="off"
     >
 
-```
-<button
-    class="skip-btn"
-    id="skip-btn"
-    onclick="skipQuestion()"
-    disabled
->
-    パス (Enter)
-</button>
-```
+    <button
+        class="skip-btn"
+        id="skip-btn"
+        onclick="skipQuestion()"
+        disabled
+    >
+        パス (Enter)
+    </button>
 
 </div>
+
 
 <script>
 
@@ -239,21 +239,23 @@ var activeCountries = [];
 
 
 /* =========================================================
-   GitHub Pages上の画像フォルダ
+   GitHubの情報
 ========================================================= */
 
-var IMAGE_FOLDER = "apploaded/";
+var GITHUB_API =
+    "https://api.github.com/repos/Haruhito-k/guess-country/contents/apploaded";
+
+var GITHUB_RAW =
+    "https://raw.githubusercontent.com/Haruhito-k/guess-country/main/apploaded/";
 
 
 /* =========================================================
-   国名データ
+   国データ
 ========================================================= */
 
 var masterCountries = [
 
-    // =========================
     // かんたん
-    // =========================
 
     { name: "日本", file: "japan", x: 86.7, y: 31, diff: "easy" },
     { name: "アメリカ", file: "unitedstates", x: 17, y: 30, diff: "easy" },
@@ -267,9 +269,7 @@ var masterCountries = [
     { name: "イタリア", file: "italy", x: 49, y: 27, diff: "easy" },
 
 
-    // =========================
     // ふつう
-    // =========================
 
     { name: "ドイツ", file: "germany", x: 48, y: 21, diff: "normal" },
     { name: "カナダ", file: "canada", x: 12, y: 18, diff: "normal" },
@@ -293,9 +293,7 @@ var masterCountries = [
     { name: "ニュージーランド", file: "newzealand", x: 96, y: 89, diff: "normal" },
 
 
-    // =========================
     // むずかしい
-    // =========================
 
     { name: "アゼルバイジャン", file: "azerbaijan", x: 59, y: 29, diff: "hard" },
     { name: "アフガニスタン", file: "afghanistan", x: 65.5, y: 33.5, diff: "hard" },
@@ -350,102 +348,534 @@ var masterCountries = [
     { name: "ルーマニア", file: "romania", x: 52.7, y: 25.2, diff: "hard" }
 ];
 
-
-/* =========================================================
-   画像の拡張子を自動判定
-========================================================= */
-
-var imageExtensions = [
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".webp"
-];
+var activeCountries = [];
 
 
 /* =========================================================
-   画像URLを探す
+   ファイル名を比較するための関数
 ========================================================= */
 
-function findImage(country, callback) {
+function cleanName(name) {
 
-    var index = 0;
-
-    function tryNext() {
-
-        if (index >= imageExtensions.length) {
-
-            callback(null);
-            return;
-        }
-
-        var url =
-            IMAGE_FOLDER +
-            country.file +
-            imageExtensions[index];
-
-        index++;
-
-        var img = new Image();
-
-        img.onload = function() {
-            callback(url);
-        };
-
-        img.onerror = function() {
-            tryNext();
-        };
-
-        img.src = url;
-    }
-
-    tryNext();
+    return name
+        .toLowerCase()
+        .replace(/\.[^/.]+$/, "")
+        .replace(/_map|[-_]map/g, "")
+        .replace(/[^a-z0-9]/g, "");
 }
 
 
 /* =========================================================
-   全画像を読み込む
+   GitHubのapploadedフォルダから画像一覧を取得
 ========================================================= */
 
-function loadImages() {
+async function loadImagesFromGitHub() {
 
-    loading.style.display = "flex";
+    try {
 
-    var loaded = 0;
-    var failed = 0;
+        loadingText.textContent =
+            "GitHubから画像を読み込んでいます...";
 
-    var total = masterCountries.length;
+        loadingDetail.textContent =
+            "画像ファイルを確認しています";
 
-    masterCountries.forEach(function(country) {
 
-        findImage(country, function(url) {
-
-            if (url) {
-
-                country.url = url;
-                loaded++;
-
-            } else {
-
-                failed++;
-            }
-
-            var finished = loaded + failed;
-
-            loadingText.textContent =
-                "画像を読み込んでいます... " +
-                finished +
-                " / " +
-                total;
-
-            if (finished === total) {
-
-                finishLoading();
-            }
+        var response = await fetch(GITHUB_API, {
+            cache: "no-store"
         });
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                "GitHub API error: " +
+                response.status
+            );
+        }
+
+
+        var files = await response.json();
+
+
+        if (!Array.isArray(files)) {
+
+            throw new Error(
+                "apploadedフォルダを読み込めませんでした"
+            );
+        }
+
+
+        var imageFiles = files.filter(function(file) {
+
+            if (file.type !== "file") {
+                return false;
+            }
+
+            return /\.(png|jpg|jpeg|webp|gif)$/i.test(
+                file.name
+            );
+        });
+
+
+        if (imageFiles.length === 0) {
+
+            throw new Error(
+                "apploadedフォルダに画像がありません"
+            );
+        }
+
+
+        var matched = 0;
+
+
+        /*
+         * GitHubに実際に存在するファイル名と
+         * masterCountriesのfileを照合する
+         */
+
+        masterCountries.forEach(function(country) {
+
+            var target = cleanName(country.file);
+
+
+            var found = imageFiles.find(function(file) {
+
+                return cleanName(file.name) === target;
+
+            });
+
+
+            if (found) {
+
+                country.url =
+                    GITHUB_RAW +
+                    encodeURIComponent(found.name);
+
+                country.actualFile =
+                    found.name;
+
+                matched++;
+
+            }
+
+        });
+
+
+        loadingText.textContent =
+            "画像の準備が完了しました";
+
+
+        loadingDetail.textContent =
+            matched +
+            " / " +
+            masterCountries.length +
+            " 個の国の画像を確認しました";
+
+
+        filterCountries();
+
+
+        if (activeCountries.length === 0) {
+
+            throw new Error(
+                "国のデータと画像ファイルを対応させられませんでした。"
+            );
+        }
+
+
+        /*
+         * 最初の画像を先に読み込む
+         */
+
+        var first = activeCountries[0];
+
+        await preloadImage(first.url);
+
+
+        loading.style.display = "none";
+
+        m.style.display = "block";
+
+        b.disabled = false;
+        skipBtn.disabled = false;
+
+        tText.textContent =
+            "ターゲットを破壊せよ！！";
+
+
+        setTimeout(function() {
+
+            b.focus();
+
+            nextQuestion();
+
+        }, 100);
+
+
+    } catch (error) {
+
+        console.error(error);
+
+
+        loadingText.textContent =
+            "画像の読み込みに失敗しました";
+
+
+        loadingDetail.textContent =
+            error.message;
+
+
+        errorMessage.innerHTML =
+            "GitHubから画像を読み込めませんでした。<br><br>" +
+            "ページを再読み込みしてもう一度試してください。<br><br>" +
+            "<small>" +
+            error.message +
+            "</small>";
+
+
+        errorMessage.style.display = "block";
+    }
+}
+
+
+/* =========================================================
+   画像の読み込み確認
+========================================================= */
+
+function preloadImage(url) {
+
+    return new Promise(function(resolve, reject) {
+
+        var img = new Image();
+
+
+        img.onload = function() {
+
+            resolve();
+
+        };
+
+
+        img.onerror = function() {
+
+            reject(
+                new Error(
+                    "画像を読み込めませんでした: " +
+                    url
+                )
+            );
+
+        };
+
+
+        img.src = url;
 
     });
 }
 
 
-/* ==========*
+/* =========================================================
+   難易度変更
+========================================================= */
+
+function setDifficulty(diff, btn) {
+
+    currentDiff = diff;
+
+
+    var btns =
+        document.querySelectorAll(".diff-btn");
+
+
+    btns.forEach(function(button) {
+
+        button.classList.remove("active");
+
+    });
+
+
+    btn.classList.add("active");
+
+
+    if (activeCountries.length > 0) {
+
+        filterCountries();
+
+        nextQuestion();
+
+    }
+}
+
+
+/* =========================================================
+   問題を難易度で絞り込む
+========================================================= */
+
+function filterCountries() {
+
+    activeCountries =
+        masterCountries.filter(function(country) {
+
+            if (!country.url) {
+
+                return false;
+
+            }
+
+
+            if (currentDiff === "all") {
+
+                return true;
+
+            }
+
+
+            return country.diff === currentDiff;
+
+        });
+
+
+    /*
+     * 選択した難易度に画像がない場合
+     */
+
+    if (
+        activeCountries.length === 0 &&
+        currentDiff !== "all"
+    ) {
+
+        alert(
+            "この難易度の画像が見つかりませんでした。「すべて」に戻します。"
+        );
+
+
+        currentDiff = "all";
+
+
+        document
+            .querySelectorAll(".diff-btn")
+            .forEach(function(button) {
+
+                button.classList.remove("active");
+
+            });
+
+
+        document
+            .querySelector(".diff-btn")
+            .classList.add("active");
+
+
+        filterCountries();
+
+    }
+}
+
+
+/* =========================================================
+   パス
+========================================================= */
+
+function skipQuestion() {
+
+    if (!current) {
+
+        return;
+
+    }
+
+
+    alert(
+        "スキップしました！\n\n" +
+        "正解は「" +
+        current.name +
+        "」"
+    );
+
+
+    nextQuestion();
+}
+
+
+/* =========================================================
+   次の問題
+========================================================= */
+
+function nextQuestion() {
+
+    if (timer) {
+
+        clearInterval(timer);
+
+        timer = null;
+
+    }
+
+
+    if (activeCountries.length === 0) {
+
+        return;
+
+    }
+
+
+    current =
+        activeCountries[
+            Math.floor(
+                Math.random() *
+                activeCountries.length
+            )
+        ];
+
+
+    m.src = current.url;
+
+
+    s = 0.8;
+
+
+    b.value = "";
+
+
+    tText.textContent =
+        "ターゲットを破壊せよ！！";
+
+
+    update();
+
+
+    timer = setInterval(function() {
+
+        s += 0.012;
+
+
+        update();
+
+
+        if (s > 7) {
+
+            clearInterval(timer);
+
+            timer = null;
+
+
+            alert(
+                "時間切れ！\n\n" +
+                "正解は「" +
+                current.name +
+                "」"
+            );
+
+
+            nextQuestion();
+
+        }
+
+    }, 20);
+}
+
+
+/* =========================================================
+   画像位置更新
+========================================================= */
+
+function update() {
+
+    if (!current) {
+
+        return;
+
+    }
+
+
+    m.style.transformOrigin =
+        current.x +
+        "% " +
+        current.y +
+        "%";
+
+
+    m.style.transform =
+        "translate(-" +
+        current.x +
+        "%, -" +
+        current.y +
+        "%) scale(" +
+        s +
+        ")";
+}
+
+
+/* =========================================================
+   Enterキー
+========================================================= */
+
+b.addEventListener("keydown", function(e) {
+
+    if (e.key !== "Enter") {
+
+        return;
+
+    }
+
+
+    if (!current) {
+
+        return;
+
+    }
+
+
+    var answer =
+        b.value.trim();
+
+
+    /*
+     * 空欄ならパス
+     */
+
+    if (answer === "") {
+
+        skipQuestion();
+
+        return;
+
+    }
+
+
+    /*
+     * 正解
+     */
+
+    if (answer === current.name) {
+
+        alert("成功！");
+
+
+        nextQuestion();
+
+
+        return;
+
+    }
+
+
+    /*
+     * 不正解
+     */
+
+    b.value = "";
+
+});
+
+
+/* =========================================================
+   ゲーム開始
+========================================================= */
+
+loadImagesFromGitHub();
+
+</script>
+
+</body>
+</html>
